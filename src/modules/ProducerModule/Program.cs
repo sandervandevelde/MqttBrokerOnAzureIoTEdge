@@ -67,7 +67,7 @@ namespace ProducerModule
 
                 await mqttClient.ConnectAsync(mqttClientOptions, CancellationToken.None);
 
-                Console.WriteLine("Client connected");
+                Console.WriteLine("MQTT Client connected");
 
                 var thread = new Thread(() => ThreadBody());
                 thread.Start();

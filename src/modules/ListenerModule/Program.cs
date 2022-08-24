@@ -11,10 +11,11 @@ namespace ListenerModule
     using Microsoft.Azure.Devices.Client;
     using Microsoft.Azure.Devices.Client.Transport.Mqtt;
 
+    using MQTTnet.Client;
+    using MQTTnet;
+
     class Program
     {
-        static int counter;
-
         static void Main(string[] args)
         {
             Init().Wait();
@@ -46,47 +47,112 @@ namespace ListenerModule
             ITransportSettings[] settings = { mqttSetting };
 
             // Open a connection to the Edge runtime
-            ModuleClient ioTHubModuleClient = await ModuleClient.CreateFromEnvironmentAsync(settings);
+            ioTHubModuleClient = await ModuleClient.CreateFromEnvironmentAsync(settings);
             await ioTHubModuleClient.OpenAsync();
             Console.WriteLine("IoT Hub module client initialized.");
 
-            // Register callback to be called when a message is received by the module
-            await ioTHubModuleClient.SetInputMessageHandlerAsync("input1", PipeMessage, ioTHubModuleClient);
-        }
-
-        /// <summary>
-        /// This method is called whenever the module is sent a message from the EdgeHub. 
-        /// It just pipe the messages without any change.
-        /// It prints all the incoming messages.
-        /// </summary>
-        static async Task<MessageResponse> PipeMessage(Message message, object userContext)
-        {
-            int counterValue = Interlocked.Increment(ref counter);
-
-            var moduleClient = userContext as ModuleClient;
-            if (moduleClient == null)
+            try
             {
-                throw new InvalidOperationException("UserContext doesn't contain " + "expected values");
-            }
+                // connect
+                mqttFactory = new MqttFactory();
 
-            byte[] messageBytes = message.GetBytes();
-            string messageString = Encoding.UTF8.GetString(messageBytes);
-            Console.WriteLine($"Received message: {counterValue}, Body: [{messageString}]");
+                mqttClient = mqttFactory.CreateMqttClient();
 
-            if (!string.IsNullOrEmpty(messageString))
-            {
-                using (var pipeMessage = new Message(messageBytes))
+                mqttClientOptions = new MqttClientOptionsBuilder()
+                    .WithTcpServer("192.168.1.89", 1883)
+                    .WithClientId("listener")
+                    .Build();
+
+                mqttClient.DisconnectedAsync += OnDisconnected;
+
+                mqttClient.ApplicationMessageReceivedAsync += MqttClient_ApplicationMessageReceivedAsync;
+
+                await mqttClient.ConnectAsync(mqttClientOptions, CancellationToken.None);
+
+                Console.WriteLine("MQTT Client connected");
+
+                //// subscribe for MQTT incoming messages
+                var mqttSubscribeOptionsdirectmethod = mqttFactory.CreateSubscribeOptionsBuilder()
+                    .WithTopicFilter(f => { f.WithTopic(subscribe_topic_filter); })
+                    .Build();
+                await mqttClient.SubscribeAsync(mqttSubscribeOptionsdirectmethod, CancellationToken.None);
+
+                System.Console.WriteLine($"Subscribed for topic '{subscribe_topic_filter}'");
+
+                while (true)
                 {
-                    foreach (var prop in message.Properties)
-                    {
-                        pipeMessage.Properties.Add(prop.Key, prop.Value);
-                    }
-                    await moduleClient.SendEventAsync("output1", pipeMessage);
-                
-                    Console.WriteLine("Received message sent");
+                    Thread.Sleep(1000);
                 }
             }
-            return MessageResponse.Completed;
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Exception: {ex.Message}");
+            }
+
+            System.Console.WriteLine("Exiting...");
+        }
+
+        private static Task MqttClient_ApplicationMessageReceivedAsync(MqttApplicationMessageReceivedEventArgs args)
+        {
+            var topic = args.ApplicationMessage.Topic;
+
+            var jsonMessage = string.Empty;
+
+            var messageType = string.Empty;
+
+            // if (topic.StartsWith("guardian01/bbr/"))
+            // {
+            //     messageType = "bbr";
+
+            //     var message = args.ApplicationMessage.ConvertPayloadToString();
+
+            //     var bbrMessage = new BbrMessage("Guardian01", DateTime.UtcNow, message);
+
+            //     jsonMessage = JsonConvert.SerializeObject(bbrMessage);
+            // }
+            // else
+            // {
+            //     messageType = "unknown";
+
+            //     var message = args.ApplicationMessage.ConvertPayloadToString();
+
+            //     var unknownMessage = new UnknownMessage{deviceId = "Guardian01", timeStamp = DateTime.UtcNow, message = message};
+
+            //     jsonMessage = JsonConvert.SerializeObject(unknownMessage);
+            // }
+
+            // var messageBytes  = Encoding.UTF8.GetBytes(jsonMessage);
+
+            // using (var pipeMessage = new Message(messageBytes))
+            // {
+            //     pipeMessage.ContentEncoding = "utf-8";
+            //     pipeMessage.ContentType = "application/json";
+
+            //     pipeMessage.Properties.Add("messageType", messageType);
+
+            //     Console.Write($"Sending... ");
+
+            //     ioTHubModuleClient.SendEventAsync("output1", pipeMessage).Wait();
+            
+            //     Console.WriteLine($"Sent message '{jsonMessage}' of type '{messageType}' sent");
+            // }
+
+            return Task.CompletedTask;
+        }
+
+
+        private static ModuleClient ioTHubModuleClient = null;
+        private static IMqttClient mqttClient = null;
+        private static MqttFactory mqttFactory = null;
+        private static MqttClientOptions mqttClientOptions = null;
+        public static string subscribe_topic_filter => "producer/telemetry/#";
+
+        private static async Task OnDisconnected(MqttClientDisconnectedEventArgs e)
+        {
+            System.Console.WriteLine("Disconnect detected. Reconnect in 30 seconds...");
+            await Task.Delay(TimeSpan.FromSeconds(30));
+            await mqttClient.ConnectAsync(mqttClientOptions, CancellationToken.None);
+            System.Console.WriteLine("Reconnected.");
         }
     }
 }
