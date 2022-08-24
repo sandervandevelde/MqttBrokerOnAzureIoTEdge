@@ -14,6 +14,8 @@ namespace ListenerModule
     using MQTTnet.Client;
     using MQTTnet;
 
+    using Newtonsoft.Json;
+
     class Program
     {
         static void Main(string[] args)
@@ -92,60 +94,37 @@ namespace ListenerModule
             System.Console.WriteLine("Exiting...");
         }
 
-        private static Task MqttClient_ApplicationMessageReceivedAsync(MqttApplicationMessageReceivedEventArgs args)
-        {
-            var topic = args.ApplicationMessage.Topic;
-
-            var jsonMessage = string.Empty;
-
-            var messageType = string.Empty;
-
-            // if (topic.StartsWith("guardian01/bbr/"))
-            // {
-            //     messageType = "bbr";
-
-            //     var message = args.ApplicationMessage.ConvertPayloadToString();
-
-            //     var bbrMessage = new BbrMessage("Guardian01", DateTime.UtcNow, message);
-
-            //     jsonMessage = JsonConvert.SerializeObject(bbrMessage);
-            // }
-            // else
-            // {
-            //     messageType = "unknown";
-
-            //     var message = args.ApplicationMessage.ConvertPayloadToString();
-
-            //     var unknownMessage = new UnknownMessage{deviceId = "Guardian01", timeStamp = DateTime.UtcNow, message = message};
-
-            //     jsonMessage = JsonConvert.SerializeObject(unknownMessage);
-            // }
-
-            // var messageBytes  = Encoding.UTF8.GetBytes(jsonMessage);
-
-            // using (var pipeMessage = new Message(messageBytes))
-            // {
-            //     pipeMessage.ContentEncoding = "utf-8";
-            //     pipeMessage.ContentType = "application/json";
-
-            //     pipeMessage.Properties.Add("messageType", messageType);
-
-            //     Console.Write($"Sending... ");
-
-            //     ioTHubModuleClient.SendEventAsync("output1", pipeMessage).Wait();
-            
-            //     Console.WriteLine($"Sent message '{jsonMessage}' of type '{messageType}' sent");
-            // }
-
-            return Task.CompletedTask;
-        }
-
-
         private static ModuleClient ioTHubModuleClient = null;
         private static IMqttClient mqttClient = null;
         private static MqttFactory mqttFactory = null;
         private static MqttClientOptions mqttClientOptions = null;
         public static string subscribe_topic_filter => "producer/telemetry/#";
+
+
+        private static Task MqttClient_ApplicationMessageReceivedAsync(MqttApplicationMessageReceivedEventArgs args)
+        {
+            if (args.ApplicationMessage.Topic.StartsWith(subscribe_topic_filter.Replace("/#", "")))
+            {
+                var cloudMessage = new CloudMessage("producer", DateTime.UtcNow, args.ApplicationMessage.ConvertPayloadToString());
+
+                var jsonMessage = JsonConvert.SerializeObject(cloudMessage);
+
+                var messageBytes  = Encoding.UTF8.GetBytes(jsonMessage);
+
+                using (var pipeMessage = new Message(messageBytes))
+                {
+                    ioTHubModuleClient.SendEventAsync("output1", pipeMessage).Wait();
+                
+                    Console.WriteLine($"Message '{jsonMessage}' sent");
+                }
+            }
+            else
+            {
+                System.Console.WriteLine($"Unknown message '{args.ApplicationMessage.ConvertPayloadToString()}' on topic '{args.ApplicationMessage.Topic}'");
+            }
+
+            return Task.CompletedTask;
+        }
 
         private static async Task OnDisconnected(MqttClientDisconnectedEventArgs e)
         {
