@@ -105,7 +105,7 @@ namespace ListenerModule
         {
             if (args.ApplicationMessage.Topic.StartsWith(subscribe_topic_filter.Replace("/#", "")))
             {
-                var cloudMessage = new CloudMessage("producer", DateTime.UtcNow, args.ApplicationMessage.ConvertPayloadToString());
+                var cloudMessage = new CloudMessage(subscribe_topic_filter.Split('/')[0], DateTime.UtcNow, args.ApplicationMessage.ConvertPayloadToString());
 
                 var jsonMessage = JsonConvert.SerializeObject(cloudMessage);
 
