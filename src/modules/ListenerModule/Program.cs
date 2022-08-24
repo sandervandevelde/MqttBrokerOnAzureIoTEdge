@@ -43,95 +43,95 @@ namespace ListenerModule
         /// Initializes the ModuleClient and sets up the callback to receive
         /// messages containing temperature information
         /// </summary>
-        static async Task Init()
+static async Task Init()
+{
+    MqttTransportSettings mqttSetting = new MqttTransportSettings(TransportType.Mqtt_Tcp_Only);
+    ITransportSettings[] settings = { mqttSetting };
+
+    // Open a connection to the Edge runtime
+    ioTHubModuleClient = await ModuleClient.CreateFromEnvironmentAsync(settings);
+    await ioTHubModuleClient.OpenAsync();
+    Console.WriteLine("IoT Hub module client initialized.");
+
+    try
+    {
+        // connect
+        mqttFactory = new MqttFactory();
+
+        mqttClient = mqttFactory.CreateMqttClient();
+
+        mqttClientOptions = new MqttClientOptionsBuilder()
+            .WithTcpServer("[edge device IP address]", 1883)
+            .WithClientId("listener")
+            .Build();
+
+        mqttClient.DisconnectedAsync += OnDisconnected;
+
+        mqttClient.ApplicationMessageReceivedAsync += MqttClient_ApplicationMessageReceivedAsync;
+
+        await mqttClient.ConnectAsync(mqttClientOptions, CancellationToken.None);
+
+        Console.WriteLine("MQTT Client connected");
+
+        //// subscribe for MQTT incoming messages
+        var mqttSubscribeOptionsdirectmethod = mqttFactory.CreateSubscribeOptionsBuilder()
+            .WithTopicFilter(f => { f.WithTopic(subscribe_topic_filter); })
+            .Build();
+        await mqttClient.SubscribeAsync(mqttSubscribeOptionsdirectmethod, CancellationToken.None);
+
+        System.Console.WriteLine($"Subscribed for topic '{subscribe_topic_filter}'");
+
+        while (true)
         {
-            MqttTransportSettings mqttSetting = new MqttTransportSettings(TransportType.Mqtt_Tcp_Only);
-            ITransportSettings[] settings = { mqttSetting };
-
-            // Open a connection to the Edge runtime
-            ioTHubModuleClient = await ModuleClient.CreateFromEnvironmentAsync(settings);
-            await ioTHubModuleClient.OpenAsync();
-            Console.WriteLine("IoT Hub module client initialized.");
-
-            try
-            {
-                // connect
-                mqttFactory = new MqttFactory();
-
-                mqttClient = mqttFactory.CreateMqttClient();
-
-                mqttClientOptions = new MqttClientOptionsBuilder()
-                    .WithTcpServer("192.168.1.89", 1883)
-                    .WithClientId("listener")
-                    .Build();
-
-                mqttClient.DisconnectedAsync += OnDisconnected;
-
-                mqttClient.ApplicationMessageReceivedAsync += MqttClient_ApplicationMessageReceivedAsync;
-
-                await mqttClient.ConnectAsync(mqttClientOptions, CancellationToken.None);
-
-                Console.WriteLine("MQTT Client connected");
-
-                //// subscribe for MQTT incoming messages
-                var mqttSubscribeOptionsdirectmethod = mqttFactory.CreateSubscribeOptionsBuilder()
-                    .WithTopicFilter(f => { f.WithTopic(subscribe_topic_filter); })
-                    .Build();
-                await mqttClient.SubscribeAsync(mqttSubscribeOptionsdirectmethod, CancellationToken.None);
-
-                System.Console.WriteLine($"Subscribed for topic '{subscribe_topic_filter}'");
-
-                while (true)
-                {
-                    Thread.Sleep(1000);
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Exception: {ex.Message}");
-            }
-
-            System.Console.WriteLine("Exiting...");
+            Thread.Sleep(1000);
         }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Exception: {ex.Message}");
+    }
 
-        private static ModuleClient ioTHubModuleClient = null;
-        private static IMqttClient mqttClient = null;
-        private static MqttFactory mqttFactory = null;
-        private static MqttClientOptions mqttClientOptions = null;
-        public static string subscribe_topic_filter => "producer/telemetry/#";
+    System.Console.WriteLine("Exiting...");
+}
+
+private static ModuleClient ioTHubModuleClient = null;
+private static IMqttClient mqttClient = null;
+private static MqttFactory mqttFactory = null;
+private static MqttClientOptions mqttClientOptions = null;
+public static string subscribe_topic_filter => "producer/telemetry/#";
 
 
-        private static Task MqttClient_ApplicationMessageReceivedAsync(MqttApplicationMessageReceivedEventArgs args)
+private static Task MqttClient_ApplicationMessageReceivedAsync(MqttApplicationMessageReceivedEventArgs args)
+{
+    if (args.ApplicationMessage.Topic.StartsWith(subscribe_topic_filter.Replace("/#", "")))
+    {
+        var cloudMessage = new CloudMessage(subscribe_topic_filter.Split('/')[0], DateTime.UtcNow, args.ApplicationMessage.ConvertPayloadToString());
+
+        var jsonMessage = JsonConvert.SerializeObject(cloudMessage);
+
+        var messageBytes  = Encoding.UTF8.GetBytes(jsonMessage);
+
+        using (var pipeMessage = new Message(messageBytes))
         {
-            if (args.ApplicationMessage.Topic.StartsWith(subscribe_topic_filter.Replace("/#", "")))
-            {
-                var cloudMessage = new CloudMessage(subscribe_topic_filter.Split('/')[0], DateTime.UtcNow, args.ApplicationMessage.ConvertPayloadToString());
-
-                var jsonMessage = JsonConvert.SerializeObject(cloudMessage);
-
-                var messageBytes  = Encoding.UTF8.GetBytes(jsonMessage);
-
-                using (var pipeMessage = new Message(messageBytes))
-                {
-                    ioTHubModuleClient.SendEventAsync("output1", pipeMessage).Wait();
-                
-                    Console.WriteLine($"Message '{jsonMessage}' sent");
-                }
-            }
-            else
-            {
-                System.Console.WriteLine($"Unknown message '{args.ApplicationMessage.ConvertPayloadToString()}' on topic '{args.ApplicationMessage.Topic}'");
-            }
-
-            return Task.CompletedTask;
+            ioTHubModuleClient.SendEventAsync("output1", pipeMessage).Wait();
+        
+            Console.WriteLine($"Message '{jsonMessage}' sent");
         }
+    }
+    else
+    {
+        System.Console.WriteLine($"Unknown message '{args.ApplicationMessage.ConvertPayloadToString()}' on topic '{args.ApplicationMessage.Topic}'");
+    }
 
-        private static async Task OnDisconnected(MqttClientDisconnectedEventArgs e)
-        {
-            System.Console.WriteLine("Disconnect detected. Reconnect in 30 seconds...");
-            await Task.Delay(TimeSpan.FromSeconds(30));
-            await mqttClient.ConnectAsync(mqttClientOptions, CancellationToken.None);
-            System.Console.WriteLine("Reconnected.");
-        }
+    return Task.CompletedTask;
+}
+
+private static async Task OnDisconnected(MqttClientDisconnectedEventArgs e)
+{
+    System.Console.WriteLine("Disconnect detected. Reconnect in 30 seconds...");
+    await Task.Delay(TimeSpan.FromSeconds(30));
+    await mqttClient.ConnectAsync(mqttClientOptions, CancellationToken.None);
+    System.Console.WriteLine("Reconnected.");
+}
     }
 }

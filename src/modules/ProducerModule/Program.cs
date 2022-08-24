@@ -59,7 +59,7 @@ namespace ProducerModule
                 mqttClient = mqttFactory.CreateMqttClient();
 
                 mqttClientOptions = new MqttClientOptionsBuilder()
-                    .WithTcpServer("192.168.1.89", 1883)
+                    .WithTcpServer("[edge device IP address]", 1883)
                     .WithClientId("producer")
                     .Build();
 
