@@ -1,6 +1,6 @@
 # Mqtt Broker On Azure IoT Edge
 
-This is a demonstration on how to deploy an MQTT Broker on Azure IoTEdge
+This is a demonstration on how to deploy an MQTT Broker on Azure IoT Edge. Next to the generic MQTT broker, a custom MQTT message producer module and an MQTT message consumer module is deployed. MQTT messages are then sent to the cloud.
 
 ## Blog Post
 
