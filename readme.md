@@ -10,7 +10,9 @@ More background information and a demonstration of the logic is available at [my
 
 ## Disclaimer
 
-I'm neither related or affiliated to HiveMQ nor do I earn something from HiveMQ. 
+Note: Neither am I related to HiveMQ nor do I get any compensation for you using HiveMQ. This simple Docker support was the reason to check it out.
+
+You can just use your own MQTT broker, as docker container or anywhere else in the local network, as long as you keep the topics on par.
 
 ## License
 
